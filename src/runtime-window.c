@@ -79,10 +79,6 @@ runtime_window_new (GtkApplication *app, const char *uri)
 
   gtk_window_set_default_size (GTK_WINDOW (self), 800, 600);
 
-  GtkWidget *header = gtk_header_bar_new ();
-  gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (header), TRUE);
-  gtk_window_set_titlebar (GTK_WINDOW (self), header);
-
   self->webview = WEBKIT_WEB_VIEW (webkit_web_view_new ());
   gtk_container_add (GTK_CONTAINER (self), GTK_WIDGET (self->webview));
 
