@@ -1,0 +1,6 @@
+<gresources>
+    <gresource prefix="/app">
+        <file>style/global.css</file>
+        <file>js/global.js</file>
+    </gresource>
+</gresources>
