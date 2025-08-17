@@ -10,6 +10,8 @@ struct _RuntimeWindow
   GtkApplicationWindow parent_instance;
   WebKitWebView *webview;
   GtkWidget *address_bar;
+  GtkWidget *back_button;
+  GtkWidget *forward_button;
 };
 
 G_DEFINE_TYPE (RuntimeWindow, runtime_window, GTK_TYPE_APPLICATION_WINDOW)
@@ -20,6 +22,21 @@ on_uri_changed (WebKitWebView *webview, GParamSpec *pspec, gpointer user_data)
   RuntimeWindow *self = RUNTIME_WINDOW (user_data);
   const gchar *uri = webkit_web_view_get_uri (self->webview);
   gtk_entry_set_text (GTK_ENTRY (self->address_bar), uri ? uri : "");
+
+  gtk_widget_set_visible (self->back_button,
+                          webkit_web_view_can_go_back (self->webview));
+
+  gtk_widget_set_visible (self->forward_button,
+                          webkit_web_view_can_go_forward (self->webview));
+}
+
+static void
+on_title_changed (WebKitWebView *webview, GParamSpec *pspec,
+                  gpointer user_data)
+{
+  RuntimeWindow *self = RUNTIME_WINDOW (user_data);
+  const gchar *title = webkit_web_view_get_title (self->webview);
+  gtk_window_set_title (GTK_WINDOW (self), title);
 }
 
 static void
@@ -34,6 +51,9 @@ on_favicon_changed (WebKitWebView *webview, GParamSpec *pspec,
       int h = cairo_image_surface_get_height (icon);
       GdkPixbuf *pixbuf = gdk_pixbuf_get_from_surface (icon, 0, 0, w, h);
       gtk_window_set_icon (GTK_WINDOW (self), pixbuf);
+
+      gtk_entry_set_icon_from_pixbuf (GTK_ENTRY (self->address_bar),
+                                      GTK_ENTRY_ICON_PRIMARY, pixbuf);
     }
 }
 
@@ -93,13 +113,6 @@ go_forward (GtkWidget *widget, gpointer user_data)
   webkit_web_view_go_forward (self->webview);
 }
 
-static void
-go_refresh (GtkWidget *widget, gpointer user_data)
-{
-  RuntimeWindow *self = RUNTIME_WINDOW (user_data);
-  webkit_web_view_reload (self->webview);
-}
-
 RuntimeWindow *
 runtime_window_new (GtkApplication *app, const char *uri)
 {
@@ -112,36 +125,35 @@ runtime_window_new (GtkApplication *app, const char *uri)
   gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (header), TRUE);
   gtk_window_set_titlebar (GTK_WINDOW (self), header);
 
-  GtkWidget *back_button
+  self->back_button
       = gtk_button_new_from_icon_name ("go-previous", GTK_ICON_SIZE_BUTTON);
-  g_signal_connect (back_button, "clicked", G_CALLBACK (go_back), self);
-  gtk_header_bar_pack_start (GTK_HEADER_BAR (header), back_button);
+  g_signal_connect (self->back_button, "clicked", G_CALLBACK (go_back), self);
+  gtk_header_bar_pack_start (GTK_HEADER_BAR (header), self->back_button);
 
-  GtkWidget *next_button
+  self->forward_button
       = gtk_button_new_from_icon_name ("go-next", GTK_ICON_SIZE_BUTTON);
-  g_signal_connect (next_button, "clicked", G_CALLBACK (go_forward), self);
-  gtk_header_bar_pack_start (GTK_HEADER_BAR (header), next_button);
-
-  GtkWidget *reload_button
-      = gtk_button_new_from_icon_name ("view-refresh", GTK_ICON_SIZE_BUTTON);
-  g_signal_connect (reload_button, "clicked", G_CALLBACK (go_refresh), self);
-  gtk_header_bar_pack_start (GTK_HEADER_BAR (header), reload_button);
+  g_signal_connect (self->forward_button, "clicked", G_CALLBACK (go_forward),
+                    self);
+  gtk_header_bar_pack_start (GTK_HEADER_BAR (header), self->forward_button);
 
   self->address_bar = gtk_entry_new ();
-  gtk_widget_set_hexpand (self->address_bar, TRUE);
+  gtk_widget_set_hexpand (self->address_bar, FALSE);
+  gtk_widget_set_halign (self->address_bar, GTK_ALIGN_CENTER);
+  gtk_entry_set_max_length (GTK_ENTRY (self->address_bar), 90);
+  gtk_entry_set_width_chars (GTK_ENTRY (self->address_bar), 60);
   g_signal_connect (self->address_bar, "activate", G_CALLBACK (go_uri), self);
-  gtk_entry_set_icon_from_icon_name (GTK_ENTRY (self->address_bar),
-                                     GTK_ICON_SIZE_BUTTON, "view-refresh");
-  gtk_header_bar_set_custom_title (GTK_HEADER_BAR (header), self->address_bar);
 
-  GtkWidget *pref
-      = gtk_button_new_from_icon_name ("open-menu", GTK_ICON_SIZE_BUTTON);
-  gtk_header_bar_pack_end (GTK_HEADER_BAR (header), pref);
+  gtk_entry_set_icon_from_icon_name (GTK_ENTRY (self->address_bar),
+                                     GTK_ENTRY_ICON_SECONDARY, "view-refresh");
+
+  gtk_header_bar_set_custom_title (GTK_HEADER_BAR (header), self->address_bar);
 
   self->webview = WEBKIT_WEB_VIEW (webkit_web_view_new ());
   gtk_container_add (GTK_CONTAINER (self), GTK_WIDGET (self->webview));
 
   WebKitWebContext *context = webkit_web_view_get_context (self->webview);
+  webkit_web_context_set_favicon_database_directory (context, NULL);
+
   app_uri_scheme_register (context);
   system_uri_scheme_register (context);
 
@@ -152,6 +164,8 @@ runtime_window_new (GtkApplication *app, const char *uri)
 
   g_signal_connect (self->webview, "notify::uri", G_CALLBACK (on_uri_changed),
                     self);
+  g_signal_connect (self->webview, "notify::title",
+                    G_CALLBACK (on_title_changed), self);
   g_signal_connect (self->webview, "notify::favicon",
                     G_CALLBACK (on_favicon_changed), self);
   webkit_settings_set_enable_write_console_messages_to_stdout (settings, TRUE);
